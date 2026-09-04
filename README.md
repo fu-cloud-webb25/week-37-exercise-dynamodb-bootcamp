@@ -1,12 +1,32 @@
 # Vecka 37: DynamoDB Bootcamp – Streaming Service
 
-I denna övning ska du bygga ett API för en mindre streamingtjänst med hjälp av **DynamoDB**, **Lambda**, **API Gateway** och **Serverless Framework**.
+# Övning 1 – Koppla DynamoDB till ett befintligt API
 
-Du har redan arbetat med Lambda, API Gateway och Serverless Framework. Det nya i denna övning är därför **DynamoDB**.
+Under förra veckan har du byggt API:er med:
 
-Vårt färdiga flöde kommer se ut så här:
+```text
+Lambda
+API Gateway
+Serverless Framework
+```
 
-```text id="b90b9n"
+Du har bland annat arbetat med **Shakespearean Insults API**, och även fått möjlighet att skapa ett eget API.
+
+Hittills har datan i våra API:er antingen varit hårdkodad eller lagrats direkt i våra Lambda-funktioner.
+
+Problemet med detta är att datan **inte är persistent**.
+
+När Lambda-funktionen startas om kan datan försvinna.
+
+Nu ska vi lösa det genom att koppla vårt API till:
+
+```text
+DynamoDB
+```
+
+Vårt flöde kommer nu se ut så här:
+
+```text
 Insomnia
    │
    ▼
@@ -19,7 +39,503 @@ Lambda
 DynamoDB
 ```
 
-Vi kommer bygga tjänsten steg för steg och testa våra endpoints i exempelvis **Insomnia**.
+---
+
+# Del 1 – Välj API
+
+Utgå från ett API som du byggde under förra veckan.
+
+Du kan exempelvis använda:
+
+```text
+Shakespearean Insults API
+```
+
+eller något av de egna API:er du byggt.
+
+Målet är att **behålla ditt befintliga API**, men ersätta den tidigare datalagringen med DynamoDB.
+
+I exemplen nedan kommer vi utgå från Shakespearean Insults API.
+
+---
+
+# Del 2 – Skapa en DynamoDB-tabell
+
+Gå till **DynamoDB** i AWS Console.
+
+Skapa en ny tabell.
+
+Exempel:
+
+```text
+Table name:
+insults-db
+```
+
+Skapa följande Partition Key:
+
+```text
+id
+```
+
+Datatyp:
+
+```text
+String
+```
+
+Vi behöver ingen Sort Key i den här övningen.
+
+Ett item i vår tabell skulle exempelvis kunna se ut så här:
+
+```json
+{
+  "id": "a8f3d2",
+  "insult": "Thou art a boil, a plague-sore!"
+}
+```
+
+Om du arbetar med ditt eget API behöver du själv fundera på:
+
+* Vad ska tabellen heta?
+* Vad ska vara Partition Key?
+* Vilka egenskaper behöver varje item innehålla?
+
+---
+
+# Del 3 – Installera DynamoDB-klienterna
+
+Öppna ditt befintliga Serverless Framework-projekt.
+
+Installera:
+
+```bash
+npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
+```
+
+Skapa sedan en DynamoDB Document Client som dina Lambda-funktioner kan använda.
+
+Exempel:
+
+```js
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+
+const client = new DynamoDBClient({});
+
+export const db = DynamoDBDocumentClient.from(client);
+```
+
+Nu kan våra Lambda-funktioner kommunicera med DynamoDB.
+
+---
+
+# Del 4 – PutCommand
+
+Vi börjar med att skapa data.
+
+Vi vill exempelvis kunna göra:
+
+```http
+POST /insults
+```
+
+Request body:
+
+```json
+{
+  "insult": "Thou art a boil, a plague-sore!"
+}
+```
+
+Lambda-funktionen ska skapa ett unikt ID och spara objektet i DynamoDB.
+
+Resultatet skulle exempelvis kunna bli:
+
+```json
+{
+  "id": "a8f3d2",
+  "insult": "Thou art a boil, a plague-sore!"
+}
+```
+
+För att skapa ett item använder vi:
+
+```js
+PutCommand
+```
+
+från:
+
+```js
+@aws-sdk/lib-dynamodb
+```
+
+Flödet blir:
+
+```text
+POST /insults
+      │
+      ▼
+Lambda
+      │
+      ▼
+skapa ID
+      │
+      ▼
+PutCommand
+      │
+      ▼
+DynamoDB
+```
+
+Implementera funktionen och testa den med Insomnia.
+
+Kontrollera även i DynamoDB Console att ditt item har skapats.
+
+---
+
+# Del 5 – GetCommand
+
+Nu ska vi kunna hämta ett specifikt item.
+
+Vi vill kunna göra:
+
+```http
+GET /insults/{id}
+```
+
+Exempel:
+
+```http
+GET /insults/a8f3d2
+```
+
+Eftersom vi känner till objektets Partition Key kan vi använda:
+
+```js
+GetCommand
+```
+
+Funktionen behöver alltså göra ungefär:
+
+```text
+id
+ ↓
+GetCommand
+ ↓
+DynamoDB
+ ↓
+Insult
+```
+
+Testa endpointen med ett ID som finns i databasen.
+
+Fundera även på:
+
+> Vad bör API:t returnera om ID:t inte finns?
+
+---
+
+# Del 6 – Hämta alla insults
+
+Nu vill vi kunna göra:
+
+```http
+GET /insults
+```
+
+Här uppstår ett nytt problem.
+
+Med `GetCommand` behöver vi känna till:
+
+```text
+id
+```
+
+Men i det här fallet vill vi hämta **alla items i tabellen**.
+
+Vi känner alltså inte till deras ID:n.
+
+För detta kan vi använda:
+
+```js
+ScanCommand
+```
+
+Ett Scan läser igenom tabellen och returnerar de items som finns där.
+
+Implementera:
+
+```http
+GET /insults
+```
+
+med hjälp av:
+
+```js
+ScanCommand
+```
+
+Testa sedan endpointen i Insomnia.
+
+Du bör nu få tillbaka alla insults som finns i DynamoDB.
+
+> **Fundera:** Vad tror du händer om tabellen innehåller 10 items? 1 000 items? 1 000 000 items?
+
+Vi kommer återkomma till detta senare.
+
+---
+
+# Del 7 – UpdateCommand
+
+Nu ska ett befintligt item kunna uppdateras.
+
+Exempel:
+
+```http
+PUT /insults/{id}
+```
+
+Request body:
+
+```json
+{
+  "insult": "Thou art an updated insult!"
+}
+```
+
+För att uppdatera ett item kan vi använda:
+
+```js
+UpdateCommand
+```
+
+Lambda-funktionen behöver veta vilket item som ska uppdateras genom dess:
+
+```text
+id
+```
+
+Implementera endpointen.
+
+Testa sedan:
+
+```http
+GET /insults/{id}
+```
+
+och kontrollera att informationen har ändrats.
+
+Kontrollera även resultatet i DynamoDB Console.
+
+---
+
+# Del 8 – DeleteCommand
+
+Sista CRUD-operationen är att ta bort ett item.
+
+Skapa:
+
+```http
+DELETE /insults/{id}
+```
+
+För att ta bort objektet använder vi:
+
+```js
+DeleteCommand
+```
+
+Testa först att objektet finns:
+
+```http
+GET /insults/{id}
+```
+
+Ta sedan bort det:
+
+```http
+DELETE /insults/{id}
+```
+
+och försök därefter hämta det igen.
+
+Vad bör API:t returnera?
+
+---
+
+# Del 9 – CRUD med DynamoDB
+
+Du har nu arbetat med fem DynamoDB-operationer:
+
+| Command         | Användning                    |
+| --------------- | ----------------------------- |
+| `GetCommand`    | Hämta ett specifikt item      |
+| `ScanCommand`   | Läsa items från hela tabellen |
+| `PutCommand`    | Skapa eller ersätta ett item  |
+| `UpdateCommand` | Uppdatera ett item            |
+| `DeleteCommand` | Ta bort ett item              |
+
+Ditt API använder nu:
+
+```text
+              Insomnia
+                  │
+                  ▼
+             API Gateway
+                  │
+                  ▼
+                Lambda
+                  │
+                  ▼
+             ┌──────────┐
+             │ DynamoDB │
+             └──────────┘
+```
+
+Datan ligger alltså inte längre hårdkodad i Lambda-funktionen.
+
+---
+
+# Del 10 – Gör ditt API persistent
+
+Om du hittills följt exemplen med Shakespearean Insults API är det nu dags att kontrollera att hela ditt API använder DynamoDB.
+
+Du ska kunna:
+
+1. Skapa ett nytt item.
+2. Hämta ett specifikt item.
+3. Hämta alla items.
+4. Uppdatera ett item.
+5. Ta bort ett item.
+
+Ingen data som används av dessa endpoints ska längre vara hårdkodad i Lambda-funktionerna.
+
+Om du istället arbetar med ditt eget API gäller samma princip.
+
+Anpassa tabell, data och endpoints efter ditt eget projekt.
+
+---
+
+# Level Up – Flytta tabellen till serverless.yml
+
+Hittills har vi skapat DynamoDB-tabellen manuellt i AWS Console.
+
+Men vi använder redan Serverless Framework för att beskriva resten av vår infrastruktur.
+
+Flytta därför skapandet av DynamoDB-tabellen till:
+
+```text
+serverless.yml
+```
+
+Målet är att:
+
+```bash
+serverless deploy
+```
+
+ska kunna skapa både:
+
+```text
+Lambda-funktioner
+API Gateway
+DynamoDB-tabell
+```
+
+Fundera även på hur Lambda-funktionerna kan få tabellens namn genom en:
+
+```text
+environment variable
+```
+
+istället för att skriva tabellnamnet direkt i JavaScript-koden.
+
+---
+
+# Level Up – Validering och felhantering
+
+Bygg vidare på det du redan lärt dig om Middy och validering.
+
+API:t ska exempelvis kunna hantera:
+
+```text
+400 Bad Request
+404 Not Found
+500 Internal Server Error
+```
+
+Fundera på situationer som:
+
+* Request body saknas.
+* Ett obligatoriskt fält saknas.
+* Ett ID inte existerar.
+* DynamoDB-anropet misslyckas.
+
+Försök hålla Lambda-funktionerna små genom att flytta gemensam funktionalitet till middleware där det passar.
+
+---
+
+# Inför nästa steg
+
+Vi kan nu lagra data i DynamoDB.
+
+Men en av våra endpoints krävde:
+
+```js
+ScanCommand
+```
+
+för att hitta datan.
+
+Det fungerar för vårt lilla API.
+
+Men tänk om vår databas innehöll:
+
+```text
+1 000 000 items
+```
+
+och vi bara ville hämta en liten del av dem?
+
+Finns det något bättre sätt att strukturera vår data?
+
+Det är precis det vi ska undersöka i nästa steg.
+
+---
+
+# Övning 2 – Streaming Service och Single Table Design
+
+Nu ska vi bygga en större tjänst där vi behöver fundera mer på **hur vår data ska läsas** innan vi bestämmer hur den ska lagras.
+
+Vi ska bygga en streamingtjänst med:
+
+```text
+Series
+└── Season
+    └── Episode
+```
+
+Den här gången ska vi inte börja med tabellen.
+
+Vi börjar istället med en fråga:
+
+> **Vilka frågor behöver vår applikation kunna svara på?**
+
+Detta leder oss vidare till:
+
+```text
+Access Patterns
+       ↓
+Partition Keys
+       ↓
+Sort Keys
+       ↓
+Single Table Design
+```
+
+Nu börjar nästa del av övningen.
 
 ---
 
