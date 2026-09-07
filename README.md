@@ -107,12 +107,6 @@ Om du arbetar med ditt eget API behöver du själv fundera på:
 
 Öppna ditt befintliga Serverless Framework-projekt.
 
-Installera:
-
-```bash
-npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
-```
-
 Skapa sedan en DynamoDB Document Client som dina Lambda-funktioner kan använda.
 
 Exempel:
