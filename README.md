@@ -118,12 +118,12 @@ Skapa sedan en DynamoDB Document Client som dina Lambda-funktioner kan använda.
 Exempel:
 
 ```js
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { DynamoDB } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocument } from "@aws-sdk/lib-dynamodb";
 
-const client = new DynamoDBClient({});
+const client = new DynamoDB();
 
-export const db = DynamoDBDocumentClient.from(client);
+export const db = DynamoDBDocument.from(client);
 ```
 
 Nu kan våra Lambda-funktioner kommunicera med DynamoDB.
